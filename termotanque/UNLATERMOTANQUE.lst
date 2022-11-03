@@ -1,0 +1,489 @@
+MPASM  5.31               UNLATERMOTANQUE.ASM   11-2-2022  10:23:14         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+2007   3F10           00001         __config 3F10
+                      00002         list P=16F628A
+                      00003         #include <p16f628a.inc>
+                      00001         LIST
+                      00002 ; P16F628A.INC  Standard Header File, Version 1.10    Microchip Technology, Inc.
+                      00265         LIST
+                      00266 
+                      00004         errorlevel -302
+                      00005 
+                      00006 ;---------------------------------------------------
+                      00007 ;CODIFICACIÓN INICIAL, DETERMINAMOS SUS VARIABLES
+                      00008 ;---------------------------------------------------
+                      00009 
+                      00010         cblock 0x20
+                      00011 
+  00000020            00012         temperatura_a  ;EQU 0X21 indicador de temperatura actual
+  00000021            00013         temperatura_mn  ;EQU 0X22 indicador de temp. minima
+  00000022            00014         temperatura_mx  ;EQU 0X23 indicador de temp. maxima
+                      00015 
+  00000023            00016         canilla_abierta ;EQU 0x24 registro que se irá complementando
+                      00017 
+  00000024            00018         cont1 ;equ 0x25 CONFIGURACIONES DE LOS RETARDOS
+  00000025            00019         cont2 ;equ 0x26  " " " "
+  00000026            00020         cont3 ;equ 0x27  " " " "
+  00000027            00021         cont4 ;equ 0x28  " " " "
+                      00022 
+                      00023         endc
+                      00024 
+                      00025         org 0x00
+                      00026 
+0000   2???           00027         call PUERTOS
+0001   2???           00028         call SENSORES
+0002   2???           00029         call calentar_agua
+0003   2???           00030         call enfriar_agua
+0004   2???           00031         goto INICIO
+                      00032 
+                      00033 ;------------------------------------------------------
+                      00034 ;SUBRUTINA PRINCIPAL
+                      00035 ;------------------------------------------------------
+                      00036 
+0005                  00037 INICIO
+0005   09A3           00038         comf canilla_abierta, F ;complementación de este registro, F.
+                      00039                                                         ;LOS SIGUIENTES CALL SERÁN PARA CALENTAR
+                      00040                                                         ; EL AGUA Y LUEGO ESPERAR 10 SEGUNDOS
+0006   2???           00041         call calentar_agua 
+0007   2???           00042         call delay_10s
+                      00043                                                         ;LO MISMO QUE EL PUNTO ANTERIOR, SOLO QUE
+                      00044                                                         ;ESTE HACE ENFRIAMIENTO Y ESPERA DE 10 SEGUNDOS
+0008   2???           00045         call enfriar_agua
+0009   2???           00046         call delay_10s
+                      00047 
+000A   2???           00048         goto INICIO ; bucle infinito
+                      00049 
+MPASM  5.31               UNLATERMOTANQUE.ASM   11-2-2022  10:23:14         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00050 ;------------------------------------------------------
+000B                  00051 SENSORES
+                      00052         
+000B   3014           00053         movlw D'20' ;VALOR INICIAL EN W
+000C   00A0           00054         movwf temperatura_a ;LO CARGAMOS EN W SU VALOR DE TEMPERATURA ACTUAL
+                      00055 
+000D   301E           00056         movlw D'30' ;VALOR INICIAL EN W
+000E   00A1           00057         movwf temperatura_mn ;CARGAMOS EL VALOR DE W A TEMPERATURA MINIMA
+                      00058 
+000F   3046           00059         movlw D'70' ;VALOR INICIAL W
+0010   00A2           00060         movwf temperatura_mx ;CARGAMOS EL VALOR DE W A TEMPERATURA MÁXIMA
+                      00061 
+0011   01A3           00062         clrf canilla_abierta ;CERRADO POR DEFECTO
+                      00063 
+0012   0008           00064         return
+                      00065 
+                      00066 ;--------------------------------------------------------
+                      00067 ;SUBRUTINA DE CALENTAR EL AGUA
+                      00068 ;--------------------------------------------------------
+                      00069 
+0013                  00070 calentar_agua
+0013   0820           00071         movfw temperatura_a ; RESTAMOS MAX - ACT
+0014   0222           00072         subwf temperatura_mx, w ; VERIFICA SI TEMPERATURA_MX > TEMPERATURA_A
+                      00073 
+0015   1803           00074         btfsc STATUS, C ; Si TEMPERATURA_A > TEMPERATURA_MX salta
+0016   2???           00075         call calentar_agua_0 ; Si TEMPERATURA_A < TEMPERATURA_MX ejecuta CALENTAR_AGUA_0
+                      00076 
+0017   2???           00077         call led_rojo ;indica temperatura maxima
+                      00078 
+0018   0008           00079         return
+                      00080 
+0019                  00081 calentar_agua_0
+                      00082 
+0019   0AA0           00083         incf temperatura_a, f ; temperatura_a += 1
+001A   2???           00084         call led_amarillo ; resistencia prendida
+                      00085         
+001B   0820           00086         movfw temperatura_a                     ; Restamos TEMPERATURA_MX - TEMPERATURA_A
+001C   0222           00087         subwf temperatura_mx, w                 ; Si es iguales, el Z del status debe ser 1
+                      00088                 
+001D   1D03           00089         BTFSS STATUS,Z                  ; Salta si STATUS,Z es 1
+001E   2???           00090         GOTO calentar_agua_0            ; Hasta que no se llegue, sigue aumentando
+                      00091                 
+001F   0008           00092         RETURN
+                      00093 
+                      00094 ;--------------------------------------------------------
+                      00095 ;SUBRUTINA DECREMENTO DE TEMPERATURA ACTUAL
+                      00096 ;--------------------------------------------------------
+                      00097 
+0020                  00098 enfriar_agua
+0020   00A1           00099         movwf temperatura_mn ; verificamos que la temperatura actual sea mayor que
+0021   0220           00100         subwf temperatura_a, w ; la minima mediante la resta W = temperatura_a - temperatura_mn 
+                      00101 
+0022   1803           00102         btfsc STATUS, C ; salta si su temperatura es minima
+MPASM  5.31               UNLATERMOTANQUE.ASM   11-2-2022  10:23:14         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00103 
+0023   2???           00104         call enfriar_agua_0 ; sino solo decremente
+0024   2???           00105         call led_verde ;temperatura que lllegó a su minima, encendida.
+                      00106 
+0025                  00107 enfriar_agua_0
+Message[305]: Using default destination of 1 (file).
+0025   03A0           00108         decf temperatura_a ; decrementa el agua en 1
+0026   2???           00109         call led_azul ;indicador de resistencia apagada
+                      00110         
+0027   1823           00111         btfsc canilla_abierta,0         ; Si la canilla esta abierta
+0028   2???           00112         call enfriado_rapido    ; que decremente de a 2
+                      00113                 
+0029   00A1           00114         movwf temperatura_mn                    ; cargamos el regisro W con el valor de temperatura_a
+002A   0220           00115         subwf temperatura_a,w                   ; se realliza una resta entre la temperatura minima y ac
+                            tual    
+                      00116                 
+002B   1D03           00117         btfss STATUS,Z                  ; Si la temperatura es la minima que deje de decrementar        
+002C   2???           00118         goto enfriado_rapido            ; por lo contrario que continue decrementando
+                      00119                 
+002D   0008           00120         return
+                      00121                 
+                      00122                 
+                      00123                 
+                      00124                 
+002E                  00125 enfriado_rapido
+002E   3002           00126         movlw D'2'                      ; Cargamos el valor a decrementar
+002F   02A0           00127         subwf temperatura_a,f   ; su temperatura actual le restamos 2
+                      00128         
+                      00129 
+0030   0008           00130         return
+                      00131 
+                      00132 ;-----------------------------------------------------------------------
+                      00133 ; RETARDOS
+                      00134 ;-----------------------------------------------------------------------
+                      00135 
+0031                  00136 delay_1ms
+0031   30FA           00137         movlw d'250' ;carga en w el valor
+0032   00A4           00138         movwf cont1 ;carga de valor w al cont1
+                      00139 
+0033                  00140 retardo1
+                      00141                                         ;DECREMENTAMOS EN 1, HASTA LLEGAR A 0
+                      00142                                         ;EN SU PRIMER CONTADOR
+0033   0000           00143         nop
+0034   0BA4           00144         decfsz cont1, f
+0035   2???           00145         goto retardo1 
+                      00146 
+0036                  00147 delay_250ms
+0036   30FA           00148         movlw d'250' 
+0037   00A5           00149         movwf cont2
+                      00150 
+0038                  00151 retardo2
+                      00152                                         ;ES CASI EL MISMO PROCEDIMIENTO QUE EL ANTERIOR
+                      00153                                         ;SOLO QUE SE ESPERA 1 MS, Y HACE LO MISMO QUE EL ANTERIOR RETARD
+MPASM  5.31               UNLATERMOTANQUE.ASM   11-2-2022  10:23:14         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                            O1
+                      00154                                         ;SOLO QUE USANDO SU CONTADOR 2
+0038   2???           00155         call delay_1ms
+0039   0BA5           00156         decfsz cont2, f
+003A   2???           00157         goto retardo2
+003B   0008           00158         return
+                      00159 
+003C                  00160 delay_1s
+003C   3004           00161         movlw d'4'
+003D   00A6           00162         movwf cont3
+                      00163 
+003E                  00164 retardo3
+                      00165                                                 ; ESPERA DE 250MS POR DECREMENTO DEL CONT3
+                      00166                                                 ; 250 X 4 = 1S, REPITIENDO LA ACCIÓN
+                      00167                                                 ; HASTA QUE SEA 0
+003E   2???           00168         call delay_250ms
+003F   0BA6           00169         decfsz cont3, f
+0040   0008           00170         return
+                      00171 
+0041                  00172 delay_10s
+0041   300A           00173         movlw d'10'
+0042   0827           00174         movfw cont4
+                      00175 
+0043                  00176 retardo4
+                      00177                                                 ;ESPERA DE UN 1S POR DECREMENTO, DEL
+                      00178                                                 ;CONT4: 1S X 10 = 10S, SE REPITE LA ACCIÓN
+                      00179                                                 ;HASTA LLEGAR A 0
+0043   2???           00180         call delay_1s
+0044   0BA7           00181         decfsz cont4, f
+0045   2???           00182         goto retardo4
+0046   0008           00183         return
+                      00184 
+                      00185 ;------------------------------------------------------------------------
+                      00186 ;CONFIGURACIONES DE PUERTO
+                      00187 ;------------------------------------------------------------------------
+                      00188 
+0047                  00189 PUERTOS
+0047   1683           00190         bsf     STATUS,RP0
+0048   30F0           00191         movlw B'11110000'               ; RB0 hasta RB3 se usan como salida     
+0049   0086           00192         movwf TRISB                             ; aclaramos en donde, soea trisB
+004A   1283           00193         bcf STATUS,RP0
+004B   0008           00194         return
+                      00195 
+                      00196 ;-------------------------------------------------------------------------
+                      00197 ;SUBRUTINAS DE ENCENDER LOS LEDS
+                      00198 ;-------------------------------------------------------------------------
+                      00199 
+                      00200                                                 ;ir al banco 0, para administrar el portB
+                      00201                                                 ; habilitación de los puertos y se prenden leds 
+                      00202                                                 ;con un retardo de 250 ms, y se deshabilitan.
+004C                  00203 led_azul
+004C   1283           00204                 bcf STATUS,RP0  
+004D   1406           00205                 bsf PORTB,0             
+MPASM  5.31               UNLATERMOTANQUE.ASM   11-2-2022  10:23:14         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+004E   2???           00206                 call delay_250ms
+004F   1006           00207                 bcf PORTB,0     
+0050   0008           00208                 RETURN
+                      00209 
+0051                  00210 led_rojo
+0051   1283           00211                 bcf STATUS,RP0
+0052   1486           00212                 bsf PORTB,1     
+0053   2???           00213                 call delay_250ms
+0054   1086           00214                 bcf PORTB,1     
+0055   0008           00215                 RETURN
+                      00216 
+0056                  00217 led_amarillo
+0056   1283           00218                 bcf STATUS,RP0  
+0057   1506           00219                 bsf PORTB,2     
+0058   2???           00220                 call delay_250ms        
+0059   1106           00221                 bcf PORTB,2     
+005A   0008           00222                 RETURN
+                      00223 
+005B                  00224 led_verde
+005B   1283           00225                 bcf STATUS,RP0
+005C   1586           00226                 bsf PORTB,3     
+005D   2???           00227                 call delay_250ms
+005E   1186           00228                 bcf PORTB,3             
+005F   0008           00229                 RETURN
+                      00230 
+3F10                  00231                 END
+MPASM  5.31               UNLATERMOTANQUE.ASM   11-2-2022  10:23:14         PAGE  6
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ADEN                              00000003
+BRGH                              00000002
+C                                 00000000
+C1INV                             00000004
+C1OUT                             00000006
+C2INV                             00000005
+C2OUT                             00000007
+CCP1CON                           00000017
+CCP1IE                            00000002
+CCP1IF                            00000002
+CCP1M0                            00000000
+CCP1M1                            00000001
+CCP1M2                            00000002
+CCP1M3                            00000003
+CCP1X                             00000005
+CCP1Y                             00000004
+CCPR1H                            00000016
+CCPR1L                            00000015
+CIS                               00000003
+CM0                               00000000
+CM1                               00000001
+CM2                               00000002
+CMCON                             0000001F
+CMIE                              00000006
+CMIF                              00000006
+CREN                              00000004
+CSRC                              00000007
+DC                                00000001
+EEADR                             0000009B
+EECON1                            0000009C
+EECON2                            0000009D
+EEDATA                            0000009A
+EEIE                              00000007
+EEIF                              00000007
+F                                 00000001
+FERR                              00000002
+FSR                               00000004
+GIE                               00000007
+INDF                              00000000
+INICIO                            00000005
+INTCON                            0000000B
+INTE                              00000004
+INTEDG                            00000006
+INTF                              00000001
+IRP                               00000007
+NOT_BO                            00000000
+NOT_BOD                           00000000
+NOT_BOR                           00000000
+NOT_PD                            00000003
+NOT_POR                           00000001
+NOT_RBPU                          00000007
+NOT_T1SYNC                        00000002
+NOT_TO                            00000004
+MPASM  5.31               UNLATERMOTANQUE.ASM   11-2-2022  10:23:14         PAGE  7
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+OERR                              00000001
+OPTION_REG                        00000081
+OSCF                              00000003
+PCL                               00000002
+PCLATH                            0000000A
+PCON                              0000008E
+PEIE                              00000006
+PIE1                              0000008C
+PIR1                              0000000C
+PORTA                             00000005
+PORTB                             00000006
+PR2                               00000092
+PS0                               00000000
+PS1                               00000001
+PS2                               00000002
+PSA                               00000003
+PUERTOS                           00000047
+RBIE                              00000003
+RBIF                              00000000
+RCIE                              00000005
+RCIF                              00000005
+RCREG                             0000001A
+RCSTA                             00000018
+RD                                00000000
+RP0                               00000005
+RP1                               00000006
+RX9                               00000006
+RX9D                              00000000
+SENSORES                          0000000B
+SPBRG                             00000099
+SPEN                              00000007
+SREN                              00000005
+STATUS                            00000003
+SYNC                              00000004
+T0CS                              00000005
+T0IE                              00000005
+T0IF                              00000002
+T0SE                              00000004
+T1CKPS0                           00000004
+T1CKPS1                           00000005
+T1CON                             00000010
+T1OSCEN                           00000003
+T2CKPS0                           00000000
+T2CKPS1                           00000001
+T2CON                             00000012
+TMR0                              00000001
+TMR1CS                            00000001
+TMR1H                             0000000F
+TMR1IE                            00000000
+TMR1IF                            00000000
+TMR1L                             0000000E
+TMR1ON                            00000000
+TMR2                              00000011
+MPASM  5.31               UNLATERMOTANQUE.ASM   11-2-2022  10:23:14         PAGE  8
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TMR2IE                            00000001
+TMR2IF                            00000001
+TMR2ON                            00000002
+TOUTPS0                           00000003
+TOUTPS1                           00000004
+TOUTPS2                           00000005
+TOUTPS3                           00000006
+TRISA                             00000085
+TRISB                             00000086
+TRMT                              00000001
+TX9                               00000006
+TX9D                              00000000
+TXEN                              00000005
+TXIE                              00000004
+TXIF                              00000004
+TXREG                             00000019
+TXSTA                             00000098
+VR0                               00000000
+VR1                               00000001
+VR2                               00000002
+VR3                               00000003
+VRCON                             0000009F
+VREN                              00000007
+VROE                              00000006
+VRR                               00000005
+W                                 00000000
+WR                                00000001
+WREN                              00000002
+WRERR                             00000003
+Z                                 00000002
+_BODEN_OFF                        00003FBF
+_BODEN_ON                         00003FFF
+_BOREN_OFF                        00003FBF
+_BOREN_ON                         00003FFF
+_CP_OFF                           00003FFF
+_CP_ON                            00001FFF
+_DATA_CP_OFF                      00003FFF
+_DATA_CP_ON                       00003EFF
+_ER_OSC_CLKOUT                    00003FFF
+_ER_OSC_NOCLKOUT                  00003FFE
+_EXTCLK_OSC                       00003FEF
+_HS_OSC                           00003FEE
+_INTOSC_OSC_CLKOUT                00003FFD
+_INTOSC_OSC_NOCLKOUT              00003FFC
+_INTRC_OSC_CLKOUT                 00003FFD
+_INTRC_OSC_NOCLKOUT               00003FFC
+_LP_OSC                           00003FEC
+_LVP_OFF                          00003F7F
+_LVP_ON                           00003FFF
+_MCLRE_OFF                        00003FDF
+_MCLRE_ON                         00003FFF
+_PWRTE_OFF                        00003FFF
+_PWRTE_ON                         00003FF7
+MPASM  5.31               UNLATERMOTANQUE.ASM   11-2-2022  10:23:14         PAGE  9
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_RC_OSC_CLKOUT                    00003FFF
+_RC_OSC_NOCLKOUT                  00003FFE
+_WDT_OFF                          00003FFB
+_WDT_ON                           00003FFF
+_XT_OSC                           00003FED
+__16F628A                         00000001
+__DEBUG                           1
+calentar_agua                     00000013
+calentar_agua_0                   00000019
+canilla_abierta                   00000023
+cont1                             00000024
+cont2                             00000025
+cont3                             00000026
+cont4                             00000027
+delay_10s                         00000041
+delay_1ms                         00000031
+delay_1s                          0000003C
+delay_250ms                       00000036
+enfriado_rapido                   0000002E
+enfriar_agua                      00000020
+enfriar_agua_0                    00000025
+led_amarillo                      00000056
+led_azul                          0000004C
+led_rojo                          00000051
+led_verde                         0000005B
+retardo1                          00000033
+retardo2                          00000038
+retardo3                          0000003E
+retardo4                          00000043
+temperatura_a                     00000020
+temperatura_mn                    00000021
+temperatura_mx                    00000022
+
+Errors   :     0
+Warnings :     0 reported,     0 suppressed
+Messages :     1 reported,     1 suppressed
+
+
